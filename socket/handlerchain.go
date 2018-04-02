@@ -12,17 +12,17 @@ type HandlerChain struct {
 	list []EventHandler
 }
 
-// 添加1个
+// Add 添加1个
 func (self *HandlerChain) Add(h EventHandler) {
 	self.list = append(self.list, h)
 }
 
-// 添加多个
+// AddBatch 添加多个
 func (self *HandlerChain) AddBatch(h ...EventHandler) {
 	self.list = append(self.list, h...)
 }
 
-// 启动匹配类型
+// AddAny 启动匹配类型
 func (self *HandlerChain) AddAny(objlist ...interface{}) {
 	for _, obj := range objlist {
 
@@ -77,7 +77,6 @@ func (self *HandlerChain) Call(ev *Event) {
 var chainidgen int64 = 500
 
 func genChainID() int64 {
-
 	return atomic.AddInt64(&chainidgen, 1)
 }
 
@@ -94,18 +93,15 @@ func NewHandlerChain(objlist ...interface{}) *HandlerChain {
 type HandlerChainList []*HandlerChain
 
 func (self HandlerChainList) Call(ev *Event) {
-
 	for _, chain := range self {
 
 		cloned := ev.Clone()
 
 		chain.Call(cloned)
 	}
-
 }
 
 func (self HandlerChainList) String() string {
-
 	var buff bytes.Buffer
 
 	for _, chain := range self {

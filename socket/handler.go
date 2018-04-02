@@ -11,7 +11,6 @@ type EventHandler interface {
 
 var EnableHandlerLog bool
 
-// HandlerName 显示handler的名称
 func HandlerName(h EventHandler) string {
 	if h == nil {
 		return "nil"

@@ -1,6 +1,8 @@
 package socket
 
-import "net"
+import (
+	"net"
+)
 
 // Peer 端, Connector或Acceptor
 type Peer interface {
@@ -14,7 +16,7 @@ type Peer interface {
 	PeerProfile
 
 	// 定制处理链
-	//HandlerChainManager
+	HandlerChainManager
 
 	// 会话管理
 	SessionAccessor
@@ -29,7 +31,7 @@ type socketPeer struct {
 	*PeerProfileImplement
 
 	// 处理链管理
-	//*cellnet.HandlerChainManagerImplement
+	*HandlerChainManagerImplement
 
 	// socket配置
 	*socketOptions
@@ -65,16 +67,25 @@ func (self *socketPeer) endStopping() {
 
 func newSocketPeer(sm SessionManager) *socketPeer {
 	self := &socketPeer{
-		SessionManager:       sm,
-		socketOptions:        newSocketOptions(),
-		PeerProfileImplement: NewPeerProfile(),
+		SessionManager:               sm,
+		socketOptions:                newSocketOptions(),
+		PeerProfileImplement:         NewPeerProfile(),
+		HandlerChainManagerImplement: NewHandlerChainManager(),
 	}
+
+	// 设置默认读写链
+	self.SetReadWriteChain(func() *HandlerChain {
+		return NewHandlerChain(
+			NewFixedLengthFrameReader(10),
+		)
+	}, func() *HandlerChain {
+		return NewHandlerChain()
+	})
 
 	return self
 }
 
 func errToResult(err error) Result {
-
 	if err == nil {
 		return Result_OK
 	}

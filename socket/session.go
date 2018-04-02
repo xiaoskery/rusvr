@@ -45,7 +45,7 @@ type socketSession struct {
 
 	needNotifyWrite bool // 是否需要通知写线程关闭
 
-	//sendList *eventList
+	sendList *eventList
 
 	conn net.Conn
 
@@ -53,9 +53,9 @@ type socketSession struct {
 
 	tagGuard sync.RWMutex
 
-	//readChain *cellnet.HandlerChain
+	readChain *HandlerChain
 
-	//writeChain *cellnet.HandlerChain
+	writeChain *HandlerChain
 }
 
 func (self *socketSession) RawConn() interface{} {
@@ -90,7 +90,7 @@ func (self *socketSession) DataSource() io.ReadWriter {
 }
 
 func (self *socketSession) Close() {
-	//self.sendList.Add(nil)
+	self.sendList.Add(nil)
 }
 
 func (self *socketSession) Send(data interface{}) {
@@ -99,11 +99,24 @@ func (self *socketSession) Send(data interface{}) {
 
 func (self *socketSession) recvThread() {
 	for {
+		ev := NewEvent(Event_Recv, self)
+
 		read, _ := self.FromPeer().(SocketOptions).SocketDeadline()
 
 		if read != 0 {
 			self.conn.SetReadDeadline(time.Now().Add(read))
 		}
+
+		self.readChain.Call(ev)
+
+		if ev.Result() != Result_OK {
+			goto onClose
+		}
+
+		continue
+
+	onClose:
+		break
 	}
 
 	if self.needNotifyWrite {
@@ -116,6 +129,55 @@ func (self *socketSession) recvThread() {
 
 // 发送线程
 func (self *socketSession) sendThread() {
+	for {
+		// 写超时
+		_, write := self.FromPeer().(SocketOptions).SocketDeadline()
+
+		if write != 0 {
+			self.conn.SetWriteDeadline(time.Now().Add(write))
+		}
+
+		writeList, willExit := self.sendList.Pick()
+
+		// 写队列
+		for _, ev := range writeList {
+			// 发送链处理: encode等操作
+			if ev.ChainSend != nil {
+				ev.ChainSend.Call(ev)
+			}
+
+			if ev.Result() != Result_OK {
+				willExit = true
+			}
+
+			// 发送日志
+			//MsgLog(ev)
+
+			// 写链处理
+			self.writeChain.Call(ev)
+
+			if ev.Result() != Result_OK {
+				willExit = true
+			}
+		}
+
+		//if err := self.conn.Flush(); err != nil {
+		//	willExit = true
+		//}
+
+		if willExit {
+			goto exitsendloop
+		}
+	}
+exitsendloop:
+	// 不需要读线程再次通知写线程
+	self.needNotifyWrite = false
+
+	// 关闭socket,触发读错误, 结束读循环
+	self.conn.Close()
+
+	// 通知发送线程ok
+	self.endSync.Done()
 }
 
 func (self *socketSession) run() {
@@ -151,9 +213,9 @@ func newSession(conn net.Conn, p Peer) *socketSession {
 		//sendList:        NewPacketList(),
 	}
 
-	//self.readChain = p.CreateChainRead()
+	self.readChain = p.CreateChainRead()
 
-	//self.writeChain = p.CreateChainWrite()
+	self.writeChain = p.CreateChainWrite()
 
 	return self
 }
